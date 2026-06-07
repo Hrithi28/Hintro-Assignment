@@ -1,0 +1,467 @@
+openapi: 3.0.3
+info:
+  title: Hintro Meeting Intelligence API
+  description: |
+    AI-powered meeting intelligence service. Manage meetings, extract insights, track action items, and receive automated overdue reminders.
+    
+    **Authentication**: Use `POST /api/auth/register` then `POST /api/auth/login` to get a JWT token. Pass it as `Authorization: Bearer <token>`.
+  version: 1.0.0
+  contact:
+    name: Hintro Engineering
+
+servers:
+  - url: http://localhost:3000
+    description: Local development
+
+tags:
+  - name: Health
+    description: Health check
+  - name: Auth
+    description: Authentication endpoints
+  - name: Meetings
+    description: Meeting management and AI analysis
+  - name: Action Items
+    description: Action item tracking and overdue detection
+  - name: Evaluation
+    description: Submission evaluation
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    SuccessResponse:
+      type: object
+      properties:
+        traceId:
+          type: string
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        success:
+          type: boolean
+          example: true
+        data:
+          type: object
+
+    ErrorResponse:
+      type: object
+      properties:
+        traceId:
+          type: string
+        success:
+          type: boolean
+          example: false
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+              example: VALIDATION_ERROR
+            message:
+              type: string
+              example: Meeting title is required
+            details:
+              type: array
+              items:
+                type: object
+
+    TranscriptEntry:
+      type: object
+      required: [timestamp, speaker, text]
+      properties:
+        timestamp:
+          type: string
+          example: "00:10"
+        speaker:
+          type: string
+          example: John
+        text:
+          type: string
+          example: We should launch next Friday.
+
+    Citation:
+      type: object
+      properties:
+        timestamp:
+          type: string
+          example: "00:10"
+
+    CitedItem:
+      type: object
+      properties:
+        text:
+          type: string
+        citations:
+          type: array
+          items:
+            $ref: '#/components/schemas/Citation'
+
+    ActionItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        meeting_id:
+          type: string
+          nullable: true
+        task:
+          type: string
+        assignee:
+          type: string
+        assignee_email:
+          type: string
+          nullable: true
+        due_date:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [PENDING, IN_PROGRESS, COMPLETED]
+        citations:
+          type: array
+          items:
+            $ref: '#/components/schemas/Citation'
+        created_at:
+          type: string
+        updated_at:
+          type: string
+
+    Meeting:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        participants:
+          type: array
+          items:
+            type: string
+        meeting_date:
+          type: string
+        transcript:
+          type: array
+          items:
+            $ref: '#/components/schemas/TranscriptEntry'
+        created_at:
+          type: string
+
+paths:
+  /health:
+    get:
+      tags: [Health]
+      summary: Health check
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: UP
+
+  /api/evaluation:
+    get:
+      tags: [Evaluation]
+      summary: Submission evaluation info
+      responses:
+        '200':
+          description: Evaluation metadata
+
+  /api/auth/register:
+    post:
+      tags: [Auth]
+      summary: Register a new user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password, name]
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: alice@example.com
+                password:
+                  type: string
+                  minLength: 8
+                  example: password123
+                name:
+                  type: string
+                  example: Alice Smith
+      responses:
+        '201':
+          description: User registered successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          token:
+                            type: string
+                          user:
+                            type: object
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Email already registered
+
+  /api/auth/login:
+    post:
+      tags: [Auth]
+      summary: Login and receive JWT
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+      responses:
+        '200':
+          description: Login successful
+        '401':
+          description: Invalid credentials
+
+  /api/meetings:
+    get:
+      tags: [Meetings]
+      summary: List meetings (paginated)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: page
+          schema:
+            type: integer
+            default: 1
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            default: 10
+      responses:
+        '200':
+          description: List of meetings
+
+    post:
+      tags: [Meetings]
+      summary: Create a new meeting
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title, participants, meetingDate, transcript]
+              properties:
+                title:
+                  type: string
+                  example: Sprint Planning
+                participants:
+                  type: array
+                  items:
+                    type: string
+                    format: email
+                  example: ["alice@example.com", "bob@example.com"]
+                meetingDate:
+                  type: string
+                  format: date-time
+                  example: "2026-05-20T10:00:00Z"
+                transcript:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/TranscriptEntry'
+      responses:
+        '201':
+          description: Meeting created
+        '400':
+          description: Validation error
+
+  /api/meetings/{id}:
+    get:
+      tags: [Meetings]
+      summary: Get a meeting by ID
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Meeting details with analysis and action items
+        '404':
+          description: Not found
+
+  /api/meetings/{id}/analyze:
+    post:
+      tags: [Meetings]
+      summary: AI-analyze a meeting transcript
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: AI analysis with citations
+          content:
+            application/json:
+              example:
+                traceId: "abc-123"
+                success: true
+                data:
+                  analysis:
+                    summary:
+                      - text: "Team plans to launch next Friday."
+                        citations: [{ timestamp: "00:10" }]
+                    actionItems:
+                      - task: "Prepare release notes"
+                        assignee: "Alice"
+                        status: "PENDING"
+                        citations: [{ timestamp: "00:20" }]
+                    decisions: []
+                    followUps: []
+        '404':
+          description: Meeting not found
+
+  /api/action-items:
+    get:
+      tags: [Action Items]
+      summary: List action items with optional filters
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [PENDING, IN_PROGRESS, COMPLETED]
+        - in: query
+          name: assignee
+          schema:
+            type: string
+        - in: query
+          name: meetingId
+          schema:
+            type: string
+            format: uuid
+        - in: query
+          name: page
+          schema:
+            type: integer
+        - in: query
+          name: limit
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: List of action items
+
+    post:
+      tags: [Action Items]
+      summary: Create an action item manually
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [task, assignee]
+              properties:
+                task:
+                  type: string
+                assignee:
+                  type: string
+                assigneeEmail:
+                  type: string
+                  format: email
+                dueDate:
+                  type: string
+                  format: date-time
+                meetingId:
+                  type: string
+                  format: uuid
+                citations:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/Citation'
+      responses:
+        '201':
+          description: Action item created
+
+  /api/action-items/overdue:
+    get:
+      tags: [Action Items]
+      summary: Get all overdue action items
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: List of overdue items
+
+  /api/action-items/{id}/status:
+    patch:
+      tags: [Action Items]
+      summary: Update action item status
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status:
+                  type: string
+                  enum: [PENDING, IN_PROGRESS, COMPLETED]
+      responses:
+        '200':
+          description: Status updated
+        '404':
+          description: Not found
